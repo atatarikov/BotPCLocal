@@ -1,0 +1,43 @@
+# Игнорируем скрытые файлы и папки
+.*
+!.gitignore
+
+# Исключение файла с токеном бота
+.env
+
+# Временные файлы и папки
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# Каталоги виртуального окружения Python
+__pycache__
+*.py[cod]
+*.so
+*.pyo
+*.pyd
+
+# Дамп базы данных и логи
+db.sqlite3*
+
+# Специфичные для IDE файлы
+.idea/
+.project
+.vscode/
+
+# Системные артефакты
+*.sublime-project
+*.sublime-workspace
+
+# Папка с временными файлами FFmpeg
+/tmp/
+
+# Конфиденциальные файлы
+.env.example
+*.key
+*.pem
+*.cert
