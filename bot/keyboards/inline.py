@@ -6,7 +6,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 MAIN_MENU = "/main - Главное меню"
 
 
-def add_comm_mail_menu(txt: str):
+def add_comm_main_menu(txt: str):
     return txt + "\n" + MAIN_MENU
 
 

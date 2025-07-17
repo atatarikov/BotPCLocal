@@ -10,7 +10,7 @@ import logging
 
 from utils.api import api_get, api_post, api_delete
 from utils.states import AddLocationState
-from keyboards.inline import MAIN_MENU, location_action_keyboard, add_comm_mail_menu
+from keyboards.inline import MAIN_MENU, location_action_keyboard, add_comm_main_menu
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def register_handlers(bot: TeleBot):
         bot.answer_callback_query(call.id)
         markup = location_action_keyboard()
         bot.edit_message_text(
-            add_comm_mail_menu("Что вы хотите сделать с локациями?"),
+            add_comm_main_menu("Что вы хотите сделать с локациями?"),
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=markup,
@@ -37,7 +37,7 @@ def register_handlers(bot: TeleBot):
         locations = api_get(f"users/{username}/locations")
         if not locations:
             bot.edit_message_text(
-                add_comm_mail_menu("У вас нет сохранённых локаций."),
+                add_comm_main_menu("У вас нет сохранённых локаций."),
                 call.message.chat.id,
                 call.message.message_id,
             )
@@ -63,13 +63,13 @@ def register_handlers(bot: TeleBot):
         result = api_delete(f"users/{username}/locations/{location_id}")
         if result:
             bot.edit_message_text(
-                "Локация успешно удалена.",
+                add_comm_main_menu("Локация успешно удалена."),
                 call.message.chat.id,
                 call.message.message_id,
             )
         else:
             bot.edit_message_text(
-                add_comm_mail_menu("Ошибка при удалении локации."),
+                add_comm_main_menu("Ошибка при удалении локации."),
                 call.message.chat.id,
                 call.message.message_id,
             )
@@ -121,13 +121,13 @@ def register_handlers(bot: TeleBot):
             if result:
                 bot.send_message(
                     message.chat.id,
-                    add_comm_mail_menu("Локация успешно добавлена ✅"),
+                    add_comm_main_menu("Локация успешно добавлена ✅"),
                     reply_markup=ReplyKeyboardRemove(),
                 )
             else:
                 bot.send_message(
                     message.chat.id,
-                    add_comm_mail_menu("Произошла ошибка при добавлении локации"),
+                    add_comm_main_menu("Произошла ошибка при добавлении локации"),
                     reply_markup=ReplyKeyboardRemove(),
                 )
 
