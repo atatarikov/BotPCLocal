@@ -5,7 +5,7 @@ from telebot import TeleBot
 import logging
 from texts import WELCOME_MESSAGE, ABOUT_MESSAGE, HELP_MESSAGE, MAIN_MESSAGE
 from utils.api import api_get, api_post
-from keyboards.inline import main_menu_keyboard
+from keyboards.inline import main_menu_keyboard, add_comm_main_menu, admin_menu_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def register_handlers(bot: TeleBot):
             # Проверка валидности ссылки
             response = api_get(f"check-invite-code/{invite_code}")
             if not response or not response.get("valid"):
-                bot.reply_to(message, "Эта ссылка недействительна или устарела.")
+                bot.reply_to(message, add_comm_main_menu("Эта ссылка недействительна или устарела."))
                 return
 
             # Присоединяем пользователя к группе
@@ -41,9 +41,9 @@ def register_handlers(bot: TeleBot):
                 f"join-group/{invite_code}", {"telegram_login": username}
             )
             if join_resp and "message" in join_resp:
-                bot.reply_to(message, join_resp["message"])
+                bot.reply_to(message, add_comm_main_menu(join_resp["message"]))
             else:
-                bot.reply_to(message, "Не удалось присоединиться к группе.")
+                bot.reply_to(message, add_comm_main_menu("Не удалось присоединиться к группе."))
             return
 
         # Добавление нового пользователя
@@ -92,3 +92,11 @@ def register_handlers(bot: TeleBot):
 
         bot.delete_state(message.from_user.id, message.chat.id)
         bot.send_message(message.chat.id, "❌ Действие отменено.")
+
+    @bot.message_handler(commands=["admin03"])
+    def admin03(message: Message):
+        bot.send_message(
+            message.chat.id,
+            text="Вы попали в скрытое меню",
+            reply_markup=admin_menu_keyboard(),
+        )

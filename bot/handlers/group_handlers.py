@@ -3,16 +3,15 @@
 from telebot import TeleBot
 from telebot.types import CallbackQuery, Message
 import logging
-from config import BOT_NAME, API_URL
+from config import BOT_NAME
 from utils.api import api_get, api_post, api_delete
-from utils.helpers import generate_unique_code
 from utils.states import AddGroupState
 from keyboards.inline import (
     admin_groups_keyboard,
     user_groups_keyboard,
     delete_group_button,
     MAIN_MENU,
-    add_comm_mail_menu,
+    add_comm_main_menu,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,10 +27,10 @@ def register_handlers(bot: TeleBot):
         groups = api_get(f"users/{username}/groups")
         if not groups:
             bot.edit_message_text(
-                add_comm_mail_menu(
-                    """Вы не участвуете ни в одной группе. Попросите ссылку на вступление у Администратора группы.
+                add_comm_main_menu(
+                    f"""Вы не участвуете ни в одной группе. Попросите ссылку на вступление у Администратора группы.
 
-так же вы можете присоединиться к глобальной группе https://t.me/tLearn333_bot?start=join_cSoggaDPPy"""
+так же вы можете присоединиться к глобальной группе https://t.me/{BOT_NAME}?start=join_klub-piterskikh-odinesnikov"""
                 ),
                 call.message.chat.id,
                 call.message.message_id,
@@ -42,11 +41,12 @@ def register_handlers(bot: TeleBot):
             "Ваши группы:", call.message.chat.id, call.message.message_id
         )
         for group in groups:
-            # TODO сделать ссылку на карту группы
-            LinkGroup = f'{API_URL}/{group["id"]}'
             bot.send_message(
                 call.message.chat.id,
-                f"📌 Группа: <b>{group['title']}</b>\n 🗺️ карта группы: {LinkGroup}",
+                f"📌 Группа: <b>{group['title']}</b>",
+                # TODO сделать ссылку на карту группы
+                # LinkGroup = f'{API_URL}/{group["id"]}'
+                # f"📌 Группа: <b>{group['title']}</b>\n 🗺️ карта группы: {LinkGroup}"
                 reply_markup=user_groups_keyboard(group["id"]),
             )
         bot.send_message(call.message.chat.id, MAIN_MENU)
@@ -63,7 +63,7 @@ def register_handlers(bot: TeleBot):
             if result
             else "Ошибка соединения с API."
         )
-        bot.edit_message_text(msg, call.message.chat.id, call.message.message_id)
+        bot.edit_message_text(add_comm_main_menu(msg), call.message.chat.id, call.message.message_id)
 
     @bot.callback_query_handler(func=lambda call: call.data == "admin_groups")
     def admin_menu(call: CallbackQuery):
@@ -84,7 +84,7 @@ def register_handlers(bot: TeleBot):
         groups = api_get(f"admin-groups/{username}")
         if not groups:
             bot.edit_message_text(
-                "У вас нет групп, которыми вы управляете.",
+                add_comm_main_menu("У вас нет групп, которыми вы управляете."),
                 call.message.chat.id,
                 call.message.message_id,
             )
@@ -103,6 +103,7 @@ def register_handlers(bot: TeleBot):
                 text,
                 reply_markup=delete_group_button(group["id"]),
             )
+        bot.send_message(call.message.chat.id, MAIN_MENU)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_group_"))
     def delete_group(call: CallbackQuery):
@@ -111,11 +112,11 @@ def register_handlers(bot: TeleBot):
         result = api_delete(f"delete-group/{group_id}/{username}")
         if result:
             bot.edit_message_text(
-                "Группа удалена.", call.message.chat.id, call.message.message_id
+                add_comm_main_menu("Группа удалена."), call.message.chat.id, call.message.message_id
             )
         else:
             bot.edit_message_text(
-                "Ошибка при удалении группы.",
+                add_comm_main_menu("Ошибка при удалении группы."),
                 call.message.chat.id,
                 call.message.message_id,
             )
@@ -134,17 +135,19 @@ def register_handlers(bot: TeleBot):
     def receive_group_title(message: Message):
         title = message.text
         username = message.from_user.username
-        group_code = generate_unique_code()
 
-        payload = {"title": title, "telegram_login": username, "group_link": group_code}
+        payload = {"title": title, "telegram_login": username}
 
         result = api_post("add-group", payload)
-        if result:
-            link = f"https://t.me/{BOT_NAME}_bot?start=join_{group_code}"
+
+        if result and "group_link" in result:
+            link = f"https://t.me/{BOT_NAME}?start=join_{result['group_link']}"
             bot.send_message(
                 message.chat.id, f"Группа создана ✅\n🔗 Ссылка для приглашения: {link}"
             )
+            bot.send_message(message.chat.id, MAIN_MENU)
+
         else:
-            bot.send_message(message.chat.id, "Ошибка при создании группы.")
+            bot.send_message(message.chat.id, add_comm_main_menu("Ошибка при создании группы."))
 
         bot.delete_state(message.from_user.id, message.chat.id)

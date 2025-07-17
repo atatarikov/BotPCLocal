@@ -2,9 +2,23 @@ from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
 from marshmallow import Schema, fields
 import os
-from sqlalchemy.orm import relationship, backref
-from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.orm import relationship
 from sqlalchemy.exc import NoResultFound
+from slugify import slugify
+
+
+def generate_unique_group_code(title: str) -> str:
+    base_slug = slugify(title)
+    slug = base_slug
+    counter = 1
+
+    # Проверяем в базе, есть ли уже такая ссылка
+    while Group.query.filter_by(group_link=slug).first() is not None:
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+
+    return slug
+
 
 # Инициализация приложения и подключение к SQLite
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -219,11 +233,10 @@ def list_admin_groups(telegram_login):
 def create_group():
     data = request.get_json()
     telegram_login = data.get("telegram_login")
-    group_link = data.get("group_link")
     title = data.get("title")
 
     # Проверка наличия всех обязательных полей
-    if not all([telegram_login, group_link, title]):
+    if not all([telegram_login, title]):
         return jsonify({"message": "Отсутствуют обязательные поля"}), 400
 
     # Найти пользователя
@@ -231,18 +244,27 @@ def create_group():
     if not user:
         return jsonify({"message": "Пользователь не найден"}), 404
 
+    # Сгенерировать уникальный group_link
+    group_link = generate_unique_group_code(title)
+
     # Создать новую группу
     new_group = Group(group_link=group_link, title=title, admin_user_id=user.id)
     db.session.add(new_group)
     db.session.commit()
-    return jsonify({"message": f'Группа "{title}" создана успешно'}), 201
+
+    return (
+        jsonify(
+            {"message": f'Группа "{title}" создана успешно', "group_link": group_link}
+        ),
+        201,
+    )
 
 
 # Обработчик удаления группы
 @app.route("/api/delete-group/<int:group_id>/<string:owner>", methods=["DELETE"])
 def delete_group(group_id, owner):
     try:
-        user = User.query.filter_by(telegram_login=owner).first()
+        User.query.filter_by(telegram_login=owner).first()
         # Находим группу по ID и проверяем владельца
         group = Group.query.filter_by(id=group_id).one()
 
@@ -446,4 +468,4 @@ def create_tables():
 if __name__ == "__main__":
     # with app.app_context():
     #     db.create_all()  # Создает таблицы в базе данных перед запуском сервера
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)

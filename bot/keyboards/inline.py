@@ -1,7 +1,7 @@
 # keyboards/inline.py
 
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-
+from config import MAP_URL
 
 MAIN_MENU = "/main - Главное меню"
 
@@ -15,11 +15,16 @@ def main_menu_keyboard():
     markup.add(
         # InlineKeyboardButton("О боте", callback_data="about"),
         InlineKeyboardButton("Мои группы", callback_data="my_groups"),
-        InlineKeyboardButton("Администратор групп", callback_data="admin_groups"),
         InlineKeyboardButton("Мои локации", callback_data="locations"),
-        InlineKeyboardButton(
-            "Открыть карту без фильтра по группам 🌍", callback_data="map_not_filter"
-        ),
+        InlineKeyboardButton("Открыть карту 🌍", url=MAP_URL),
+    )
+    return markup
+
+
+def admin_menu_keyboard():
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton("Администратор групп", callback_data="admin_groups"),
     )
 
     return markup
