@@ -30,7 +30,7 @@ def register_handlers(bot: TeleBot):
                 add_comm_main_menu(
                     f"""Вы не участвуете ни в одной группе. Попросите ссылку на вступление у Администратора группы.
 
-так же вы можете присоединиться к глобальной группе https://t.me/{BOT_NAME}?start=join_klub-piterskikh-odinesnikov"""
+Вы можете присоединиться к Клубу Питерских Одниесников https://t.me/{BOT_NAME}?start=join_klub-piterskikh-odinesnikov"""
                 ),
                 call.message.chat.id,
                 call.message.message_id,
@@ -63,7 +63,9 @@ def register_handlers(bot: TeleBot):
             if result
             else "Ошибка соединения с API."
         )
-        bot.edit_message_text(add_comm_main_menu(msg), call.message.chat.id, call.message.message_id)
+        bot.edit_message_text(
+            add_comm_main_menu(msg), call.message.chat.id, call.message.message_id
+        )
 
     @bot.callback_query_handler(func=lambda call: call.data == "admin_groups")
     def admin_menu(call: CallbackQuery):
@@ -112,7 +114,9 @@ def register_handlers(bot: TeleBot):
         result = api_delete(f"delete-group/{group_id}/{username}")
         if result:
             bot.edit_message_text(
-                add_comm_main_menu("Группа удалена."), call.message.chat.id, call.message.message_id
+                add_comm_main_menu("Группа удалена."),
+                call.message.chat.id,
+                call.message.message_id,
             )
         else:
             bot.edit_message_text(
@@ -148,6 +152,8 @@ def register_handlers(bot: TeleBot):
             bot.send_message(message.chat.id, MAIN_MENU)
 
         else:
-            bot.send_message(message.chat.id, add_comm_main_menu("Ошибка при создании группы."))
+            bot.send_message(
+                message.chat.id, add_comm_main_menu("Ошибка при создании группы.")
+            )
 
         bot.delete_state(message.from_user.id, message.chat.id)
