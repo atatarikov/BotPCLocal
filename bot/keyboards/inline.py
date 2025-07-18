@@ -64,7 +64,7 @@ def user_groups_keyboard(group_id: str):
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton(
-            "Выйти из группы и удалить все метки",
+            "Выйти из группы",
             callback_data=f"leave_group_{group_id}",
         )
     )
