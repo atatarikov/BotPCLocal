@@ -1,36 +1,36 @@
 from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
 from marshmallow import Schema, fields
+from flask_migrate import Migrate
 import os
+from dotenv import load_dotenv
 from sqlalchemy.orm import relationship
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import NoResultFound, IntegrityError
 from slugify import slugify
-
-
-def generate_unique_group_code(title: str) -> str:
-    base_slug = slugify(title)
-    slug = base_slug
-    counter = 1
-
-    # Проверяем в базе, есть ли уже такая ссылка
-    while Group.query.filter_by(group_link=slug).first() is not None:
-        slug = f"{base_slug}-{counter}"
-        counter += 1
-
-    return slug
+from datetime import datetime, timezone
 
 
 # Инициализация приложения и подключение к SQLite
 app = Flask(__name__, template_folder="templates", static_folder="static")
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(basedir, "data.db")
+# load_dotenv()
+# DATABASE_URI = os.getenv("DATABASE_URI")
+# app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URI
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False  # Отключаем tracking
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 
 # Модели
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     telegram_login = db.Column(db.String(80), unique=True, nullable=False)
+    training_stage = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
 
 
 class Location(db.Model):
@@ -40,6 +40,10 @@ class Location(db.Model):
     description = db.Column(db.String(120), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     user = db.relationship("User", backref=db.backref("locations", lazy=True))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
 
 
 class Group(db.Model):
@@ -48,9 +52,22 @@ class Group(db.Model):
     title = db.Column(db.String(120), nullable=False)
     admin_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     admin_user = db.relationship("User", backref=db.backref("admin_groups", lazy=True))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
     # Каскадное удаление: при удалении группы удаляются все связанные записи UserGroup
-    members = relationship(
-        "UserGroup", cascade="all, delete-orphan", backref="group_ref"
+
+    # проблемы в связях
+    # members = relationship(
+    #     "UserGroup", cascade="all, delete-orphan", backref="group_ref"
+    # )
+
+    members = db.relationship(
+        "UserGroup",
+        back_populates="group_ref",
+        cascade="all, delete-orphan",
+        overlaps="users_in_group",
     )
 
 
@@ -58,8 +75,18 @@ class UserGroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     group_id = db.Column(db.Integer, db.ForeignKey("group.id"), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    group = db.relationship("Group", backref=db.backref("users_in_group", lazy=True))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
     user = db.relationship("User", backref=db.backref("groups", lazy=True))
+
+    # проблемы в связях
+    # group = db.relationship("Group", backref=db.backref("users_in_group", lazy=True))
+
+    group_ref = db.relationship(
+        "Group", back_populates="members", overlaps="users_in_group"
+    )
 
 
 # Маршаллинг схем для сериализации/десериализации объектов
@@ -111,6 +138,20 @@ user_schema = UserSchema()
 location_schema = LocationSchema()
 group_schema = GroupSchema()
 user_group_schema = UserGroupSchema()
+
+
+def generate_unique_group_code(title: str) -> str:
+    base_slug = slugify(title)
+    slug = base_slug
+    counter = 1
+
+    # Проверяем в базе, есть ли уже такая ссылка
+    while Group.query.filter_by(group_link=slug).first() is not None:
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+
+    return slug
+
 
 # Основные маршруты API
 

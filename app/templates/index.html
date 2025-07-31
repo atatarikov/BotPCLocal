@@ -1,28 +1,102 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
-    <style>
-        #map { height: 500px; width: 100%; }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Карта локаций</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+    #map {
+      width: 100vw;
+      height: 100vh;
+    }
+    .theme-toggle {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-family: Arial, sans-serif;
+      cursor: pointer;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+  </style>
 </head>
 <body>
+
+<div class="theme-toggle" onclick="toggleTheme()">🌗 Сменить тему</div>
 <div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-fetch('/api/all-map-data')  // Здесь укажите адрес вашего API
+  let map, lightLayer, darkLayer, isDark = false;
+
+  // Инициализация карты (временно Москва, потом заменим на позицию пользователя)
+  map = L.map('map').setView([55.7558, 37.6173], 13);
+
+  // Стили
+  lightLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap contributors, CartoDB'
+  });
+
+  darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap contributors, CartoDB'
+  });
+
+  lightLayer.addTo(map);
+
+  function toggleTheme() {
+    if (isDark) {
+      map.removeLayer(darkLayer);
+      map.addLayer(lightLayer);
+    } else {
+      map.removeLayer(lightLayer);
+      map.addLayer(darkLayer);
+    }
+    isDark = !isDark;
+  }
+
+  // Центрируем по геопозиции пользователя
+  map.locate({ setView: true, maxZoom: 15 });
+
+  map.on('locationfound', e => {
+    const userMarker = L.circleMarker(e.latlng, {
+      radius: 6,
+      fillColor: '#3388ff',
+      color: '#3388ff',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.6
+    }).addTo(map).bindPopup("Вы здесь").openPopup();
+  });
+
+  map.on('locationerror', () => {
+    alert("Не удалось определить ваше местоположение.");
+  });
+
+  // Загружаем точки с сервера
+  fetch('/api/all-map-data')
     .then(res => res.json())
     .then(data => {
-        const map = L.map('map').setView([55.7558, 37.6173], 10);  // Начальная позиция центра карты
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {}).addTo(map);
-
-        data.locations.forEach(loc => {
-            let marker = L.marker([loc.latitude, loc.longitude]).addTo(map);
-            marker.bindPopup(`<b>${loc.telegram_login}</b><br/>${loc.description}`).openPopup();
-        });
+      data.locations.forEach(loc => {
+        const marker = L.marker([loc.latitude, loc.longitude]).addTo(map);
+        const popup = `
+          <div style="font-family: Arial; font-size: 14px;">
+            <b><a href="https://t.me/${loc.telegram_login}" target="_blank">@${loc.telegram_login}</a></b><br/>
+            ${loc.description || ''}
+          </div>
+        `;
+        marker.bindPopup(popup);
+      });
     });
 </script>
+
 </body>
 </html>

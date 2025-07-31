@@ -14,4 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Запускаем сервер на порту 5001
-CMD ["flask", "run", "--host=0.0.0.0"]
+# CMD ["flask", "run", "--host=0.0.0.0"]
+
+# Запускаем Gunicorn вместо Flask (4 воркера, порт 5000)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "app:app"]

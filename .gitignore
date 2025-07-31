@@ -24,6 +24,8 @@ __pycache__
 # Дамп базы данных и логи
 db.sqlite3*
 
+data.db
+
 # Специфичные для IDE файлы
 .idea/
 .project
