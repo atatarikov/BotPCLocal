@@ -2,6 +2,7 @@
 
 import requests
 import logging
+from typing import Optional, Any, Dict, List
 from config import API_URL
 
 logger = logging.getLogger(__name__)
