@@ -1,16 +1,24 @@
 # handlers/location_handlers.py
 
 from telebot import TeleBot
-from telebot.types import (
-    CallbackQuery,
-    Message,
-    ReplyKeyboardRemove,
-)
+from telebot.types import CallbackQuery, Message
 import logging
-
-from utils.api import api_get, api_post, api_delete, handle_api_error
+from config import FINAL_STAGE_TRAINING
+from utils.api import (
+    api_get,
+    api_post,
+    api_delete,
+    handle_api_error,
+    get_training_stage,
+    update_training_stage,
+)
 from utils.states import AddLocationState
-from keyboards.inline import MAIN_MENU, location_action_keyboard, add_comm_main_menu
+from keyboards.inline import (
+    location_action_keyboard,
+    add_another_location,
+    main_menu_keyboard,
+)
+from utils.texts import main_message
 
 
 logger = logging.getLogger(__name__)
@@ -36,41 +44,41 @@ def register_handlers(bot: TeleBot):
     @bot.callback_query_handler(func=lambda call: call.data == "locations")
     def locations_menu(call: CallbackQuery):
         bot.answer_callback_query(call.id)
-        markup = location_action_keyboard()
-        bot.edit_message_text(
-            add_comm_main_menu("Что вы хотите сделать с локациями?"),
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=markup,
+        bot.send_message(
+            call.message.chat.id,
+            "Что вы хотите сделать с локациями?",
+            reply_markup=location_action_keyboard(),
         )
 
     @bot.callback_query_handler(func=lambda call: call.data == "list_locations")
     def list_user_locations(call: CallbackQuery):
         bot.answer_callback_query(call.id)
-        username = call.from_user.username
 
-        locations = api_get(f"users/{username}/locations")
+        result, e = api_get(f"user/{call.from_user.id}/locations")
 
-        if locations is None:
+        if e:
             handle_api_error(bot, call.message.chat.id, call.message.message_id)
             return
-
+        locations = result["data"]
         if not locations:
-            bot.edit_message_text(
-                add_comm_main_menu("У вас нет сохранённых локаций."),
+            bot.send_message(
                 call.message.chat.id,
-                call.message.message_id,
+                "У вас нет сохранённых локаций.",
+                reply_markup=add_another_location(call.from_user),
             )
             return
 
-        bot.edit_message_text(
-            "Ваши локации:", call.message.chat.id, call.message.message_id
+        bot.send_message(
+            call.message.chat.id,
+            "Ваши локации:",
         )
         for loc in locations:
             text = f"📍 <b>{loc['description']}</b>\nКоординаты: ({loc['latitude']}, {loc['longitude']})"
             keyboard = location_action_keyboard(loc["id"])
             bot.send_message(call.message.chat.id, text, reply_markup=keyboard)
-        bot.send_message(call.message.chat.id, MAIN_MENU)
+        bot.send_message(
+            call.message.chat.id, "Что ты хочешь сделать дальше?", reply_markup=add_another_location(call.from_user)
+        )
 
     @bot.callback_query_handler(
         func=lambda call: call.data.startswith("delete_location_")
@@ -78,34 +86,32 @@ def register_handlers(bot: TeleBot):
     def delete_location(call: CallbackQuery):
         bot.answer_callback_query(call.id)
         location_id = call.data.split("_")[-1]
-        username = call.from_user.username
+        payload = {"telegram_id": call.from_user.id}
+        result, e = api_delete(f"location/{location_id}/delete", payload)
 
-        result = api_delete(f"users/{username}/locations/{location_id}")
-
-        if result is None:
+        if e:
             handle_api_error(bot, call.message.chat.id, call.message.message_id)
             return
 
         if result:
-            bot.edit_message_text(
-                add_comm_main_menu("Локация успешно удалена."),
+            bot.send_message(
                 call.message.chat.id,
-                call.message.message_id,
+                result["message"],
+                reply_markup=add_another_location(call.from_user),
             )
         else:
-            bot.edit_message_text(
-                add_comm_main_menu("Ошибка при удалении локации."),
+            bot.send_message(
                 call.message.chat.id,
-                call.message.message_id,
+                "Ошибка при удалении локации.",
+                location_action_keyboard(),
             )
 
     @bot.callback_query_handler(func=lambda call: call.data == "add_location")
     def start_add_location(call: CallbackQuery):
         bot.answer_callback_query(call.id)
-        bot.edit_message_text(
-            ("Введите описание для новой локации\n" "или отмените добавление /cancel"),
+        bot.send_message(
             call.message.chat.id,
-            call.message.message_id,
+            ("Введи описание для новой локации\n" "или отмените добавление /cancel"),
         )
         bot.set_state(
             call.from_user.id, AddLocationState.description, call.message.chat.id
@@ -126,6 +132,7 @@ def register_handlers(bot: TeleBot):
             message.chat.id,
             (
                 "📍 Теперь, отправьте геопозицию через 📎 (кнопка 'Прикрепить' -> 'Геопозиция')\n"
+                "⚠️Можно приблезительную, помни о безопасности!⚠️\n"
                 "или отмените добавление /cancel"
             ),
         )
@@ -152,9 +159,9 @@ def register_handlers(bot: TeleBot):
                 venue_parts.append(message.venue.address)
         else:
             warning_msg = (
-                "❌ Вы находитесь в режиме добавления локации.\n"
-                "Пожалуйста, отправьте геопозицию через 📎 (кнопка 'Прикрепить' -> 'Геопозиция' или 'Место')\n"
-                "Или отправьте /cancel для отмены"
+                "❌ Ты находишся в режиме добавления локации.\n"
+                "Пожалуйста, отправь геопозицию через 📎 (кнопка 'Прикрепить' -> 'Геопозиция' или 'Место')\n"
+                "Или отправь /cancel для отмены"
             )
             bot.send_message(message.chat.id, warning_msg)
 
@@ -167,7 +174,6 @@ def register_handlers(bot: TeleBot):
         # Обработка location или venue
         with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
             base_description = data.get("description", "")
-            username = message.from_user.username
 
             if venue_parts:
                 venue_info = ", ".join(venue_parts)
@@ -180,27 +186,42 @@ def register_handlers(bot: TeleBot):
                 description = base_description
 
             payload = {
-                "telegram_login": username,
+                "telegram_id": message.from_user.id,
                 "description": description,
                 "latitude": latitude,
                 "longitude": longitude,
             }
 
-            result = api_post("add-location", payload)
+            result, e = api_post("location/add", payload)
 
-            if result is None:
+            if e:
                 handle_api_error(bot, message.chat.id)
-            elif result:
+                return
+
+            training_stage = get_training_stage(bot, message.from_user, message.chat.id)
+
+            if training_stage <= FINAL_STAGE_TRAINING:
+                if training_stage < 3:
+                    training_stage = 3
+                    training_stage, error = update_training_stage(
+                        bot, message.from_user.id, training_stage, message.chat.id
+                    )
+                    if error:
+                        return
                 bot.send_message(
                     message.chat.id,
-                    add_comm_main_menu("Локация успешно добавлена ✅"),
-                    reply_markup=ReplyKeyboardRemove(),
+                    text=main_message(training_stage).format(
+                        first_name=message.from_user.first_name
+                    ),
+                    reply_markup=main_menu_keyboard(
+                        bot, message.from_user, message.chat.id
+                    ),
                 )
-            else:
-                bot.send_message(
-                    message.chat.id,
-                    add_comm_main_menu("Произошла ошибка при добавлении локации"),
-                    reply_markup=ReplyKeyboardRemove(),
-                )
+                return
+            bot.send_message(
+                message.chat.id,
+                ("Локация успешно добавлена ✅\n мошешь добавить еще точки 🤗"),
+                reply_markup=add_another_location(message.from_user),
+            )
 
         bot.delete_state(message.from_user.id, message.chat.id)

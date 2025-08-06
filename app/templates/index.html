@@ -27,21 +27,35 @@
       cursor: pointer;
       box-shadow: 0 0 5px rgba(0,0,0,0.3);
     }
+    .notification {
+      position: absolute;
+      top: 50px;
+      left: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 8px;
+      font-family: Arial, sans-serif;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      max-width: 300px;
+      display: none;
+    }
   </style>
 </head>
 <body>
 
 <div class="theme-toggle" onclick="toggleTheme()">🌗 Сменить тему</div>
+<div class="notification" id="notification"></div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
   let map, lightLayer, darkLayer, isDark = false;
 
-  // Инициализация карты (временно Москва, потом заменим на позицию пользователя)
+  // Инициализация карты
   map = L.map('map').setView([55.7558, 37.6173], 13);
 
-  // Стили
+  // Стили карты
   lightLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OpenStreetMap contributors, CartoDB'
   });
@@ -52,6 +66,7 @@
 
   lightLayer.addTo(map);
 
+  // Функция смены темы
   function toggleTheme() {
     if (isDark) {
       map.removeLayer(darkLayer);
@@ -61,6 +76,69 @@
       map.addLayer(darkLayer);
     }
     isDark = !isDark;
+  }
+
+  // Функция показа уведомления
+  function showNotification(message, isError = false) {
+    const notification = document.getElementById('notification');
+    notification.textContent = message;
+    notification.style.display = 'block';
+    notification.style.backgroundColor = isError ? '#ffebee' : '#e8f5e9';
+
+    setTimeout(() => {
+      notification.style.display = 'none';
+    }, 5000);
+  }
+
+  // Функция обновления стадии обучения
+  async function updateTrainingStage(telegramId, newStage) {
+    try {
+      const response = await fetch('/api/user/update_training_stage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          telegram_id: telegramId,
+          new_training_stage: newStage
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'error') {
+        showNotification(`Ошибка: ${data.message}`, true);
+        return false;
+      }
+
+      showNotification(`Стадия обучения обновлена: ${newStage}`);
+      return true;
+    } catch (error) {
+      showNotification('Ошибка сети при обновлении стадии', true);
+      return false;
+    }
+  }
+
+  // Функция загрузки точек на карту
+  async function loadMapData() {
+    try {
+      const response = await fetch('/api/all-map-data');
+      const data = await response.json();
+
+      data.locations.forEach(loc => {
+        const marker = L.marker([loc.latitude, loc.longitude]).addTo(map);
+        const popup = `
+          <div style="font-family: Arial; font-size: 14px;">
+            <b>${loc.first_name || 'Пользователь'}</b><br/>
+            ${loc.username ? `<a href="https://t.me/${loc.username}" target="_blank">@${loc.username}</a><br/>` : ''}
+            ${loc.description || ''}
+          </div>
+        `;
+        marker.bindPopup(popup);
+      });
+    } catch (error) {
+      showNotification('Не удалось загрузить данные карты', true);
+    }
   }
 
   // Центрируем по геопозиции пользователя
@@ -78,24 +156,24 @@
   });
 
   map.on('locationerror', () => {
-    alert("Не удалось определить ваше местоположение.");
+    showNotification("Не удалось определить ваше местоположение", true);
   });
 
-  // Загружаем точки с сервера
-  fetch('/api/all-map-data')
-    .then(res => res.json())
-    .then(data => {
-      data.locations.forEach(loc => {
-        const marker = L.marker([loc.latitude, loc.longitude]).addTo(map);
-        const popup = `
-          <div style="font-family: Arial; font-size: 14px;">
-            <b><a href="https://t.me/${loc.telegram_login}" target="_blank">@${loc.telegram_login}</a></b><br/>
-            ${loc.description || ''}
-          </div>
-        `;
-        marker.bindPopup(popup);
-      });
-    });
+  // При загрузке страницы
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Получаем параметры из URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const telegramId = urlParams.get('uid');
+    const newTrainingStage = urlParams.get('nts');
+
+    // Если есть параметры в URL, обновляем стадию обучения
+    if (telegramId && newTrainingStage) {
+      await updateTrainingStage(telegramId, newTrainingStage);
+    }
+
+    // Загружаем точки на карту
+    await loadMapData();
+  });
 </script>
 
 </body>

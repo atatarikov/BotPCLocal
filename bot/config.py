@@ -11,3 +11,4 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME")
 HELP_USERNAMES = os.getenv("HELP_USERNAMES")
 TIMEOUT = int(os.getenv("TIMEOUT", 10))
+FINAL_STAGE_TRAINING = 4

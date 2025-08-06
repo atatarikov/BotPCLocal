@@ -3,9 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from marshmallow import Schema, fields
 from flask_migrate import Migrate
 import os
-from dotenv import load_dotenv
-from sqlalchemy.orm import relationship
-from sqlalchemy.exc import NoResultFound, IntegrityError
+from sqlalchemy.exc import IntegrityError
 from slugify import slugify
 from datetime import datetime, timezone
 
@@ -14,6 +12,7 @@ from datetime import datetime, timezone
 app = Flask(__name__, template_folder="templates", static_folder="static")
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(basedir, "data.db")
+# TODO
 # load_dotenv()
 # DATABASE_URI = os.getenv("DATABASE_URI")
 # app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URI
@@ -22,14 +21,17 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 
-# Модели
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    telegram_login = db.Column(db.String(80), unique=True, nullable=False)
+    telegram_id = db.Column(db.BigInteger, unique=True, nullable=False, index=True)
+    username = db.Column(db.String(255))
+    first_name = db.Column(db.String(255))
     training_stage = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
-        db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
 
@@ -38,11 +40,15 @@ class Location(db.Model):
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
     description = db.Column(db.String(120), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
     user = db.relationship("User", backref=db.backref("locations", lazy=True))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
-        db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
 
@@ -54,14 +60,10 @@ class Group(db.Model):
     admin_user = db.relationship("User", backref=db.backref("admin_groups", lazy=True))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
-        db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
-    # Каскадное удаление: при удалении группы удаляются все связанные записи UserGroup
-
-    # проблемы в связях
-    # members = relationship(
-    #     "UserGroup", cascade="all, delete-orphan", backref="group_ref"
-    # )
 
     members = db.relationship(
         "UserGroup",
@@ -77,13 +79,11 @@ class UserGroup(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
-        db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
     user = db.relationship("User", backref=db.backref("groups", lazy=True))
-
-    # проблемы в связях
-    # group = db.relationship("Group", backref=db.backref("users_in_group", lazy=True))
-
     group_ref = db.relationship(
         "Group", back_populates="members", overlaps="users_in_group"
     )
@@ -91,47 +91,40 @@ class UserGroup(db.Model):
 
 # Маршаллинг схем для сериализации/десериализации объектов
 class UserSchema(Schema):
-    class Meta:
-        model = User
-        load_instance = True
-
     id = fields.Int()
-    telegram_login = fields.Str(required=True)
+    telegram_id = fields.Int(required=True)
+    username = fields.Str()
+    first_name = fields.Str()
+    training_stage = fields.Int()
+    created_at = fields.DateTime()
+    updated_at = fields.DateTime()
 
 
 class LocationSchema(Schema):
-    class Meta:
-        model = Location
-        load_instance = True
-
     id = fields.Int()
     latitude = fields.Float(required=True)
     longitude = fields.Float(required=True)
-    name = fields.Str(required=True)
-    description = fields.Str()
+    description = fields.Str(required=True)
     user_id = fields.Int()
+    created_at = fields.DateTime()
+    updated_at = fields.DateTime()
 
 
 class GroupSchema(Schema):
-    class Meta:
-        model = Group
-        load_instance = True
-
     id = fields.Int()
     group_link = fields.Str(required=True)
     title = fields.Str(required=True)
     admin_user_id = fields.Int()
-    hash_sum = fields.Str()
+    created_at = fields.DateTime()
+    updated_at = fields.DateTime()
 
 
 class UserGroupSchema(Schema):
-    class Meta:
-        model = UserGroup
-        load_instance = True
-
     id = fields.Int()
     group_id = fields.Int()
     user_id = fields.Int()
+    created_at = fields.DateTime()
+    updated_at = fields.DateTime()
 
 
 user_schema = UserSchema()
@@ -156,345 +149,350 @@ def generate_unique_group_code(title: str) -> str:
 # Основные маршруты API
 
 
-@app.route("/api/user/add", methods=["POST"])
-def add_user():
-    """Endpoint для добавления пользователя в базу данных. Принимает JSON с полем 'telegram_login'."""
-    data = request.get_json()
-    telegram_login = data.get("telegram_login")
-
-    # Проверяем, существует ли уже такой пользователь
-    existing_user = User.query.filter_by(telegram_login=telegram_login).first()
-    if existing_user is None:
-        # Если пользователя нет, добавляем его в базу данных
-        new_user = User(telegram_login=telegram_login)
-        try:
-            db.session.add(new_user)
-            db.session.commit()
-            return jsonify({"message": "Пользователь успешно добавлен."}), 201
-        except IntegrityError:
-            # В случае конфликта уникальности (это редкий случай, если уже проверяли)
-            db.session.rollback()
-            return jsonify({"message": "Пользователь уже существует."}), 409
-    else:
-        # Если пользователь уже существует, возвращаем ошибку
-        return jsonify({"message": "Пользователь уже существует."}), 409
-
-
-# @app.route('/api/users/<string:telegram_login>/groups', methods=['GET'])
-# def list_user_groups(telegram_login):
-#     # Получаем пользователя по Telegram login
-#     user = User.query.filter_by(telegram_login=telegram_login).first()
-
-#     if not user:
-#         return jsonify({'message': 'Пользователь не найден'}), 404
-
-#     groups = user.groups
-#     result = user_group_schema.dump(groups, many=True)
-#     return jsonify(result), 200
-
-
 @app.route("/")
 def index():
     return render_template("index.html")
 
 
-@app.route("/api/groups/<string:hash_sum>/add-user", methods=["POST"])
-def add_user_to_group(hash_sum):
+# --------------------------
+# ХЕЛПЕРЫ
+# --------------------------
+def error_response(message, status_code=400, details=None):
+    response = {"status": "error", "message": message}
+    if details:
+        response["details"] = details
+    return jsonify(response), status_code
+
+
+def success_response(message, data=None, status_code=200):
+    response = {"status": "success", "message": message}
+    # if data:
+    response["data"] = data
+    return jsonify(response), status_code
+
+
+# --------------------------
+# USER ROUTES
+# --------------------------
+@app.route("/api/user/add", methods=["POST"])
+def add_user():
     data = request.get_json()
-    telegram_login = data.get("telegram_login")
+    telegram_id = data.get("telegram_id")
+    username = data.get("username")
+    first_name = data.get("first_name")
 
-    # Проверяем существование группы по её хэш-сумме
-    group = Group.query.filter_by(hash_sum=hash_sum).first()
-    if not group:
-        return jsonify({"message": "Группа не найдена"}), 404
+    if not telegram_id:
+        return error_response("Поле telegram_id обязательно.")
 
-    # Проверка существования пользователя
-    user = User.query.filter_by(telegram_login=telegram_login).first()
-    if not user:
-        return jsonify({"message": "Пользователь не найден"}), 404
+    user = User.query.filter_by(telegram_id=telegram_id).first()
+    if user:
+        return success_response(
+            "Пользователь уже существует.", {"training_stage": user.training_stage}, 201
+        )
 
-    # Добавляем пользователя в группу
-    new_user_group = UserGroup(group_id=group.id, user_id=user.id)
-    db.session.add(new_user_group)
-    db.session.commit()
-    return (
-        jsonify(
-            {
-                "message": f"Пользователь {telegram_login} успешно добавлен в группу {group.title}"
-            }
-        ),
-        201,
-    )
-
-
-@app.route("/api/groups/<string:hash_sum>/remove-user", methods=["DELETE"])
-def remove_user_from_group(hash_sum):
-    data = request.get_json()
-    telegram_login = data.get("telegram_login")
-
-    # Поиск группы по хэшу
-    group = Group.query.filter_by(hash_sum=hash_sum).first()
-    if not group:
-        return jsonify({"message": "Группа не найдена"}), 404
-
-    # Поиск пользователя
-    user = User.query.filter_by(telegram_login=telegram_login).first()
-    if not user:
-        return jsonify({"message": "Пользователь не найден"}), 404
-
-    # Удаление связи между группой и пользователем
-    user_group = UserGroup.query.filter_by(group_id=group.id, user_id=user.id).first()
-    if not user_group:
-        return jsonify({"message": "Пользователь не состоит в группе"}), 404
-
-    db.session.delete(user_group)
-    db.session.commit()
-    return (
-        jsonify(
-            {"message": f"Пользователь {telegram_login} удалён из группы {group.title}"}
-        ),
-        200,
-    )
-
-
-@app.route("/api/admin-groups/<string:telegram_login>", methods=["GET"])
-def list_admin_groups(telegram_login):
-    # Получаем пользователя по Telegram login
-    user = User.query.filter_by(telegram_login=telegram_login).first()
-
-    if not user:
-        return jsonify({"message": "Пользователь не найден"}), 404
-
-    admin_groups = user.admin_groups
-    result = group_schema.dump(admin_groups, many=True)
-    return jsonify(result), 200
-
-
-@app.route("/api/add-group", methods=["POST"])
-def create_group():
-    data = request.get_json()
-    telegram_login = data.get("telegram_login")
-    title = data.get("title")
-
-    # Проверка наличия всех обязательных полей
-    if not all([telegram_login, title]):
-        return jsonify({"message": "Отсутствуют обязательные поля"}), 400
-
-    # Найти пользователя
-    user = User.query.filter_by(telegram_login=telegram_login).first()
-    if not user:
-        return jsonify({"message": "Пользователь не найден"}), 404
-
-    # Сгенерировать уникальный group_link
-    group_link = generate_unique_group_code(title)
-
-    # Создать новую группу
-    new_group = Group(group_link=group_link, title=title, admin_user_id=user.id)
-    db.session.add(new_group)
-    db.session.commit()
-
-    return (
-        jsonify(
-            {"message": f'Группа "{title}" создана успешно', "group_link": group_link}
-        ),
-        201,
-    )
-
-
-# Обработчик удаления группы
-@app.route("/api/delete-group/<int:group_id>/<string:owner>", methods=["DELETE"])
-def delete_group(group_id, owner):
     try:
-        User.query.filter_by(telegram_login=owner).first()
-        # Находим группу по ID и проверяем владельца
-        group = Group.query.filter_by(id=group_id).one()
-
-        # Удаляем группу из базы данных
-        db.session.delete(group)
+        new_user = User(
+            telegram_id=telegram_id, username=username, first_name=first_name
+        )
+        db.session.add(new_user)
         db.session.commit()
-
-        return jsonify({"message": "Группа успешно удалена"}), 200
-    except NoResultFound:
-        return (
-            jsonify(
-                {"message": "Группа не найдена или вы не имеете прав на её удаление"}
-            ),
-            404,
-        )
-    except Exception as e:
-        return (
-            jsonify({"message": "Ошибка при удалении группы", "details": str(e)}),
-            500,
-        )
-
-
-@app.route("/api/users/<string:telegram_login>/locations", methods=["GET"])
-def list_user_locations(telegram_login):
-    # Получаем пользователя по Telegram login
-    user = User.query.filter_by(telegram_login=telegram_login).first()
-
-    if not user:
-        return jsonify({"message": "Пользователь не найден"}), 404
-
-    locations = user.locations
-    result = location_schema.dump(locations, many=True)
-    return jsonify(result), 200
-
-
-@app.route("/api/add-location", methods=["POST"])
-def add_location():
-    data = request.get_json()
-    telegram_login = data.get("telegram_login")
-    latitude = float(data.get("latitude"))
-    longitude = float(data.get("longitude"))
-    description = data.get("description")
-
-    # Проверка наличия обязательных полей
-    if not all([telegram_login, latitude, longitude, description]):
-        return jsonify({"message": "Отсутствуют обязательные поля"}), 400
-
-    # Получить пользователя
-    user = User.query.filter_by(telegram_login=telegram_login).first()
-    if not user:
-        return jsonify({"message": "Пользователь не найден"}), 404
-
-    # Создать новую локацию
-    new_location = Location(
-        latitude=latitude, longitude=longitude, description=description, user_id=user.id
-    )
-    db.session.add(new_location)
-    db.session.commit()
-    return jsonify({"message": f'Локация "{description}" добавлена успешно'}), 201
-
-
-# Обработчик удаления локации
-@app.route(
-    "/api/users/<string:username>/locations/<int:location_id>", methods=["DELETE"]
-)
-def delete_location(username, location_id):
-    try:
-        # Находим локацию по id и проверяем, принадлежит ли она данному пользователю
-        location = Location.query.filter_by(id=location_id).one()
-
-        # Удаляем локацию из базы данных
-        db.session.delete(location)
-        db.session.commit()
-
-        return jsonify({"message": "Локация успешно удалена"}), 200
-    except NoResultFound:
-        return jsonify({"message": "Локация не найдена или не принадлежит вам"}), 404
-    except Exception as e:
-        return (
-            jsonify({"message": "Ошибка при удалении локации", "details": str(e)}),
-            500,
-        )
-
-
-@app.route("/api/check-invite-code/<string:invite_code>", methods=["GET"])
-def check_invite_code(invite_code):
-    group = Group.query.filter_by(group_link=invite_code).first()
-    if group:
-        return (
-            jsonify({"valid": True, "group_id": group.id, "group_title": group.title}),
+        return success_response(
+            "Пользователь успешно добавлен.",
+            {"training_stage": new_user.training_stage},
             200,
         )
-    else:
-        return jsonify({"valid": False}), 404
+    except IntegrityError as e:
+        db.session.rollback()
+        return error_response("Ошибка при создании пользователя.", 500, str(e))
 
 
-@app.route("/api/join-group/<string:invite_code>", methods=["POST"])
-def join_group(invite_code):
+@app.route("/api/user/update_training_stage", methods=["POST"])
+def update_training_stage():
     data = request.get_json()
-    telegram_login = data.get("telegram_login")
+    telegram_id = data.get("telegram_id")
+    new_stage = data.get("new_training_stage")
 
-    # Проверяем существование группы по пригласительному коду
-    group = Group.query.filter_by(group_link=invite_code).first()
+    if not telegram_id or new_stage is None:
+        return error_response("Обязательные поля: telegram_id и new_training_stage")
+
+    user = User.query.filter_by(telegram_id=telegram_id).first()
+    if not user:
+        return error_response("Пользователь не найден", 404)
+
+    try:
+        user.training_stage = new_stage
+        db.session.commit()
+        return success_response(
+            "Стадия обучения обновлена", {"training_stage": user.training_stage}
+        )
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Ошибка при обновлении стадии обучения", 500, str(e))
+
+
+@app.route("/api/user/<int:telegram_id>/groups", methods=["GET"])
+def get_user_groups(telegram_id):
+    user = User.query.filter_by(telegram_id=telegram_id).first()
+    if not user:
+        return error_response("Пользователь не найден", 404)
+
+    try:
+        groups = (
+            db.session.query(Group)
+            .join(UserGroup, Group.id == UserGroup.group_id)
+            .filter(UserGroup.user_id == user.id)
+            .all()
+        )
+        return success_response(
+            "Группы пользователя получены", group_schema.dump(groups, many=True)
+        )
+    except Exception as e:
+        return error_response("Ошибка при получении групп пользователя", 500, str(e))
+
+
+@app.route("/api/group/<string:group_link>/join", methods=["POST"])
+def join_group(group_link):
+    data = request.get_json()
+    telegram_id = data.get("telegram_id")
+
+    if not telegram_id:
+        return error_response("Требуется telegram_id пользователя")
+
+    group = Group.query.filter_by(group_link=group_link).first()
     if not group:
-        return jsonify({"message": "Группа не найдена"}), 404
+        return error_response(f"Группа {group_link} не найдена", 404)
 
-    # Проверяем существование пользователя
-    user = User.query.filter_by(telegram_login=telegram_login).first()
+    user = User.query.filter_by(telegram_id=telegram_id).first()
     if not user:
-        return jsonify({"message": "Пользователь не найден"}), 404
+        return error_response("Пользователь не найден", 404)
 
-    # Проверяем, не состоит ли пользователь уже в группе
-    existing_association = UserGroup.query.filter_by(
-        group_id=group.id, user_id=user.id
-    ).first()
-    if existing_association:
-        return jsonify({"message": "Вы уже состоите в этой группе"}), 409
+    if UserGroup.query.filter_by(group_id=group.id, user_id=user.id).first():
+        return success_response("Пользователь уже в группе", 201)
 
-    # Создаем новую ассоциацию пользователя с группой
-    new_user_group = UserGroup(group_id=group.id, user_id=user.id)
-    db.session.add(new_user_group)
-    db.session.commit()
-    return (
-        jsonify(
-            {
-                "message": f"Пользователь {telegram_login} успешно добавлен в группу {group.title}"
-            }
-        ),
-        201,
-    )
+    try:
+        new_user_group = UserGroup(group_id=group.id, user_id=user.id)
+        db.session.add(new_user_group)
+        db.session.commit()
+        return success_response(f"Пользователь добавлен в группу {group.title}")
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Ошибка при добавлении в группу", 500, str(e))
 
 
-@app.route("/api/users/<string:telegram_login>/groups", methods=["GET"])
-def list_user_groups(telegram_login):
-    # Получаем пользователя по Telegram login
-    user = User.query.filter_by(telegram_login=telegram_login).first()
-    if not user:
-        return jsonify({"message": "Пользователь не найден"}), 404
-
-    # Получаем группы через отношение Many-to-Many (используя UserGroup)
-    groups = (
-        db.session.query(Group)
-        .join(UserGroup, Group.id == UserGroup.group_id)
-        .filter(UserGroup.user_id == user.id)
-        .all()
-    )
-
-    # Преобразование результата в нужный формат
-    result = group_schema.dump(groups, many=True)
-    return jsonify(result), 200
-
-
-@app.route("/api/leave-group/<int:group_id>", methods=["DELETE"])
+@app.route("/api/group/<int:group_id>/leave", methods=["DELETE"])
 def leave_group(group_id):
     data = request.get_json()
-    telegram_login = data.get("telegram_login")
+    telegram_id = data.get("telegram_id")
 
-    # Проверяем существование пользователя
-    user = User.query.filter_by(telegram_login=telegram_login).first()
+    if not telegram_id:
+        return error_response("Требуется telegram_id пользователя")
+
+    user = User.query.filter_by(telegram_id=telegram_id).first()
     if not user:
-        return jsonify({"message": "Пользователь не найден"}), 404
+        return error_response("Пользователь не найден", 404)
 
-    # Проверяем существование группы
-    group = Group.query.filter_by(id=group_id).first()
-    if not group:
-        return jsonify({"message": "Группа не найдена"}), 404
-
-    # Убираем пользователя из группы
-    user_group = UserGroup.query.filter_by(group_id=group.id, user_id=user.id).first()
+    user_group = UserGroup.query.filter_by(group_id=group_id, user_id=user.id).first()
     if not user_group:
-        return jsonify({"message": "Вы не состоите в этой группе"}), 404
+        return error_response("Пользователь не состоит в группе", 404)
 
-    db.session.delete(user_group)
-    db.session.commit()
-    return jsonify({"message": f"Вы покинули группу {group.title}"}), 200
+    try:
+        db.session.delete(user_group)
+        db.session.commit()
+        return success_response("Вы покинули группу")
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Ошибка при выходе из группы", 500, str(e))
+
+
+@app.route("/api/user/<string:telegram_id>/admin-groups", methods=["GET"])
+def get_admin_groups(telegram_id):
+    """
+    Получение списка групп, где пользователь является администратором
+    """
+    if not telegram_id:
+        return error_response("Требуется telegram_id пользователя")
+
+    user = User.query.filter_by(telegram_id=telegram_id).first()
+    if not user:
+        return error_response("Пользователь не найден", 404)
+
+    try:
+        admin_groups = user.admin_groups
+        return success_response(
+            "Группы администратора получены", group_schema.dump(admin_groups, many=True)
+        )
+    except Exception as e:
+        return error_response("Ошибка при получении групп администратора", 500, str(e))
+
+
+@app.route("/api/group/create", methods=["POST"])
+def create_group():
+    data = request.get_json()
+    telegram_id = data.get("telegram_id")
+    title = data.get("title")
+
+    if not all([telegram_id, title]):
+        return error_response("Отсутствуют обязательные поля: telegram_id и title")
+
+    user = User.query.filter_by(telegram_id=telegram_id).first()
+    if not user:
+        return error_response("Пользователь не найден", 404)
+
+    try:
+        group_link = generate_unique_group_code(title)
+        new_group = Group(group_link=group_link, title=title, admin_user_id=user.id)
+        db.session.add(new_group)
+        db.session.commit()
+        return success_response(
+            f'Группа "{title}" создана успешно', {"group_link": group_link}, 201
+        )
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Ошибка при создании группы", 500, str(e))
+
+
+@app.route("/api/group/<int:group_id>/delete", methods=["DELETE"])
+def delete_group(group_id):
+    data = request.get_json()
+    telegram_id = data.get("telegram_id")
+
+    if not telegram_id:
+        return error_response("Требуется telegram_id администратора")
+
+    user = User.query.filter_by(telegram_id=telegram_id).first()
+    if not user:
+        return error_response("Пользователь не найден", 404)
+
+    group = Group.query.filter_by(id=group_id, admin_user_id=user.id).first()
+    if not group:
+        return error_response("Группа не найдена или у вас нет прав", 404)
+
+    try:
+        db.session.delete(group)
+        db.session.commit()
+        return success_response("Группа успешно удалена")
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Ошибка при удалении группы", 500, str(e))
+
+
+@app.route("/api/location/add", methods=["POST"])
+def add_location():
+    data = request.get_json()
+    telegram_id = data.get("telegram_id")
+    latitude = data.get("latitude")
+    longitude = data.get("longitude")
+    description = data.get("description")
+
+    if not all([telegram_id, latitude, longitude, description]):
+        return error_response("Отсутствуют обязательные поля")
+
+    try:
+        latitude = float(latitude)
+        longitude = float(longitude)
+    except (TypeError, ValueError):
+        return error_response("Неверный формат координат")
+
+    user = User.query.filter_by(telegram_id=telegram_id).first()
+    if not user:
+        return error_response("Пользователь не найден", 404)
+
+    try:
+        new_location = Location(
+            latitude=latitude,
+            longitude=longitude,
+            description=description,
+            user_id=user.id,
+        )
+        db.session.add(new_location)
+        db.session.commit()
+        return success_response(
+            "Локация добавлена", location_schema.dump(new_location), 201
+        )
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Ошибка при добавлении локации", 500, str(e))
+
+
+@app.route("/api/user/<int:telegram_id>/locations", methods=["GET"])
+def get_user_locations(telegram_id):
+    """
+    Получение списка локаций пользователя
+    """
+    try:
+        user = User.query.filter_by(telegram_id=telegram_id).first()
+
+        if not user:
+            return error_response("Пользователь не найден", 404)
+
+        locations = user.locations
+        return success_response(
+            "Локации пользователя получены", location_schema.dump(locations, many=True)
+        )
+
+    except Exception as e:
+        return error_response("Ошибка при получении локаций", 500, str(e))
+
+
+@app.route("/api/location/<int:location_id>/delete", methods=["DELETE"])
+def delete_location(location_id):
+    data = request.get_json()
+    telegram_id = data.get("telegram_id")
+
+    if not telegram_id:
+        return error_response("Требуется telegram_id пользователя")
+
+    user = User.query.filter_by(telegram_id=telegram_id).first()
+    if not user:
+        return error_response("Пользователь не найден", 404)
+
+    location = Location.query.filter_by(id=location_id, user_id=user.id).first()
+    if not location:
+        return success_response("Локация не найдена, уже удалена,  или не принадлежит вам", 203)
+
+    try:
+        db.session.delete(location)
+        db.session.commit()
+        return success_response("Локация успешно удалена")
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Ошибка при удалении локации", 500, str(e))
+
+
+# --------------------------
+# UTILITY ROUTES
+# --------------------------
+
+
+@app.route("/api/invite/<string:invite_code>/check", methods=["GET"])
+def check_invite_code(invite_code):
+    group = Group.query.filter_by(group_link=invite_code).first()
+    if not group:
+        return error_response("Код приглашения недействителен", 404)
+
+    return success_response(
+        "Код приглашения действителен",
+        {"group_id": group.id, "group_title": group.title},
+    )
 
 
 @app.route("/api/all-map-data", methods=["GET"])
 def all_map_data():
-    # Получаем все локации всех пользователей
     locations = Location.query.all()
     result = []
+    # TODO
+    # т.к. логин (юзернейм может быть скрыт, то на карте нужно вывести хотябы имя, или так и написать "тебя не смогут написать...")
+    # и проверку желательно на старте сделать, если у пользователя скрыт юзер нейм, то предупредить его, что написать ему не смогут,
+    # предложить что-то еще
+
     for loc in locations:
         result.append(
             {
                 "latitude": loc.latitude,
                 "longitude": loc.longitude,
                 "description": loc.description,
-                "telegram_login": loc.user.telegram_login,
+                "first_name": loc.user.first_name,
+                "username": loc.user.username,
             }
         )
 

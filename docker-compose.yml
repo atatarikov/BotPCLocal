@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build:
@@ -20,6 +18,15 @@ services:
       - ./.env
     depends_on:
       - app
+      - redis
+    networks:
+      - botnet
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
     networks:
       - botnet
 

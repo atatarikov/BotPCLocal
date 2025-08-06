@@ -1,4 +1,5 @@
-pyTelegramBotAPI
+pyTelegramBotAPI[redis]
 python-dotenv
 requests
 flake8
+redis
