@@ -3,6 +3,7 @@ import logging
 import telebot
 from telebot import custom_filters
 from telebot.storage import StateMemoryStorage
+
 # from telebot.types import Message, CallbackQuery
 from dotenv import load_dotenv
 import os
@@ -25,7 +26,9 @@ logger = logging.getLogger(__name__)
 storage = StateMemoryStorage()
 storage.state_ttl = 300  # ⏱ 5 минут
 # storage.update_types = ['message', 'callback_query', 'edited_message']
-bot = telebot.TeleBot(BOT_TOKEN, state_storage=storage, use_class_middlewares=True, parse_mode='HTML')
+bot = telebot.TeleBot(
+    BOT_TOKEN, state_storage=storage, use_class_middlewares=True, parse_mode="HTML"
+)
 # bot.setup_middleware(storage)
 
 bot.add_custom_filter(custom_filters.StateFilter(bot))
