@@ -8,7 +8,7 @@ from telebot.storage import StateRedisStorage, StateMemoryStorage
 from dotenv import load_dotenv
 import os
 
-from handlers import start_handlers, location_handlers, group_handlers
+from handlers import start_handlers, location_handlers, group_handlers, training_handlers
 
 # from utils.states import AddLocationState, AddGroupState
 
@@ -47,6 +47,7 @@ bot.add_custom_filter(custom_filters.StateFilter(bot))
 start_handlers.register_handlers(bot)
 location_handlers.register_handlers(bot)
 group_handlers.register_handlers(bot)
+training_handlers.register_handlers(bot)
 
 
 # Запуск бота

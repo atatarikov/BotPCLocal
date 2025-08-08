@@ -200,7 +200,7 @@ def register_handlers(bot: TeleBot):
 
             training_stage = get_training_stage(bot, message.from_user, message.chat.id)
 
-            if training_stage <= FINAL_STAGE_TRAINING:
+            if training_stage < FINAL_STAGE_TRAINING:
                 if training_stage < 3:
                     training_stage = 3
                     training_stage, error = update_training_stage(
